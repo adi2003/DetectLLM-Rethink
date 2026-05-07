@@ -1,38 +1,56 @@
 #!/bin/bash
-# Quick runner for human-like text evaluation across multiple configurations
+# Global runner for human-like text evaluation (works on Kaggle, local, etc.)
+# Usage:
+#   ./run.sh [DATASET] [BASE_MODEL] [N_SAMPLES] [BASELINES] [OUTDIR]
+# Example:
+#   ./run.sh xsum gpt2-medium 50 "likelihood,logrank,LRR" human_like_results
 
 set -e
+
+# Navigate to repo root (3 levels up from this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$REPO_ROOT"
+
+# Defaults (can be overridden by positional args)
+DATASET="${1:-xsum}"
+BASE_MODEL="${2:-gpt2-medium}"
+N_SAMPLES="${3:-50}"
+BASELINES="${4:-likelihood,logrank,LRR}"
+OUTDIR="${5:-human_like_results}"
 
 echo "========================================"
 echo "Human-Like Text Detector Robustness Test"
 echo "========================================"
-
-# Default settings
-DATASET=${1:-xsum}
-BASE_MODEL=${2:-gpt2-medium}
-N_SAMPLES=${3:-100}
-BASELINES=${4:-"likelihood,logrank,LRR"}
-OUTPUT_DIR="human_like_results"
-
-mkdir -p $OUTPUT_DIR
-
 echo ""
 echo "Configuration:"
 echo "  Dataset:         $DATASET"
 echo "  Base Model:      $BASE_MODEL"
 echo "  N Samples:       $N_SAMPLES"
 echo "  Baselines:       $BASELINES"
-echo "  Output Dir:      $OUTPUT_DIR"
+echo "  Output Dir:      $OUTDIR"
 echo ""
 
-python generate_and_evaluate.py \
+mkdir -p "$OUTDIR"
+
+# Determine Python executable path (system or venv)
+if command -v python3 &> /dev/null; then
+  PYTHON_BIN="python3"
+elif command -v python &> /dev/null; then
+  PYTHON_BIN="python"
+else
+  echo "ERROR: Python not found in system PATH"
+  exit 1
+fi
+
+$PYTHON_BIN ensemble_testing/human_like_generation/generate_and_evaluate.py \
   --dataset "$DATASET" \
   --base_model_name "$BASE_MODEL" \
-  --n_samples $N_SAMPLES \
+  --n_samples "$N_SAMPLES" \
   --baselines "$BASELINES" \
-  --output_dir "$OUTPUT_DIR"
+  --output_dir "$OUTDIR"
 
 echo ""
 echo "========================================"
-echo "Complete! Results in $OUTPUT_DIR"
+echo "Complete! Results in $OUTDIR"
 echo "========================================"
