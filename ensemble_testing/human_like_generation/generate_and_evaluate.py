@@ -182,6 +182,21 @@ def main():
     dataset = [x.strip() for x in dataset]
     dataset = [' '.join(x.split()) for x in dataset]  # Remove newlines
     
+    # Truncate texts to fit within model's max sequence length
+    # gpt2-medium has max_position_embeddings=1024, so we truncate at ~900 tokens to be safe
+    max_tokens = 900
+    tokenizer = model_config['base_tokenizer']
+    
+    def truncate_text(text: str, max_tokens: int) -> str:
+        """Truncate text to fit within token limit."""
+        tokens = tokenizer.encode(text)
+        if len(tokens) > max_tokens:
+            tokens = tokens[:max_tokens]
+            text = tokenizer.decode(tokens, skip_special_tokens=True)
+        return text
+    
+    dataset = [truncate_text(x, max_tokens) for x in dataset]
+    
     # Keep only long examples
     if args.dataset in ['writing', 'squad', 'xsum']:
         long_data = [x for x in dataset if len(x.split()) > 250]
