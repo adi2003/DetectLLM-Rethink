@@ -56,52 +56,74 @@ class HumanLikeTextGenerator:
         
         prompt_tokens = self.args.prompt_len
         DEVICE = self.args.DEVICE
+        batch_size = max(1, int(self.args.batch_size))
         
         # If instruction provided, prepend it to each text
         if instruction:
             texts = [f"{instruction}\n{t}" for t in texts]
-        
-        # Encode and truncate to prompt_len
-        all_encoded = self.base_tokenizer(texts, return_tensors="pt", padding=True).to(DEVICE)
-        all_encoded = {key: value[:, :prompt_tokens] for key, value in all_encoded.items()}
-        
-        decoded = ['' for _ in range(len(texts))]
+
+        decoded_all = []
         min_words = self.args.min_words
-        
-        # Generate until we have minimum word count
-        tries = 0
-        while (m := min(len(x.split()) for x in decoded)) < min_words:
-            if tries != 0:
-                print(f"  min words: {m}, needed {min_words}, regenerating (try {tries})")
-            
-            sampling_kwargs = {}
-            if self.args.do_top_p:
-                sampling_kwargs['top_p'] = self.args.top_p
-            elif self.args.do_top_k:
-                sampling_kwargs['top_k'] = self.args.top_k
-            
-            min_length = self.args.min_len
-            outputs = self.base_model.generate(
-                **all_encoded,
-                min_length=min_length,
-                max_length=200,
-                temperature=self.args.temperature,
-                do_sample=True,
-                **sampling_kwargs,
-                pad_token_id=self.base_tokenizer.eos_token_id,
-                eos_token_id=self.base_tokenizer.eos_token_id
-            )
-            decoded = self.base_tokenizer.batch_decode(outputs, skip_special_tokens=True)
-            
-            # Remove instruction prefix if present
-            if instruction:
-                decoded = [text.replace(instruction + "\n", "") for text in decoded]
-            
-            tries += 1
-            if tries > 3:
-                break
-        
-        return decoded
+
+        # Process generation in mini-batches to avoid CUDA OOM on large n_samples.
+        for start in range(0, len(texts), batch_size):
+            end = min(start + batch_size, len(texts))
+            batch_texts = texts[start:end]
+
+            encoded = self.base_tokenizer(
+                batch_texts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=prompt_tokens,
+            ).to(DEVICE)
+
+            decoded = ['' for _ in range(len(batch_texts))]
+
+            # Generate until we have minimum word count
+            tries = 0
+            while (m := min(len(x.split()) for x in decoded)) < min_words:
+                if tries != 0:
+                    print(f"  batch {start}:{end} min words: {m}, needed {min_words}, regenerating (try {tries})")
+
+                sampling_kwargs = {}
+                if self.args.do_top_p:
+                    sampling_kwargs['top_p'] = self.args.top_p
+                elif self.args.do_top_k:
+                    sampling_kwargs['top_k'] = self.args.top_k
+
+                # Use new-token-based generation to avoid input vs max_length conflicts
+                min_new = max(1, int(self.args.min_len))
+                max_new = max(1, int(self.args.generation_len))
+                outputs = self.base_model.generate(
+                    **encoded,
+                    min_new_tokens=min_new,
+                    max_new_tokens=max_new,
+                    temperature=self.args.temperature,
+                    do_sample=True,
+                    **sampling_kwargs,
+                    pad_token_id=self.base_tokenizer.eos_token_id,
+                    eos_token_id=self.base_tokenizer.eos_token_id
+                )
+                decoded = self.base_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+
+                # Remove instruction prefix if present
+                if instruction:
+                    decoded = [text.replace(instruction + "\n", "") for text in decoded]
+
+                tries += 1
+                if tries > 3:
+                    break
+
+            decoded_all.extend(decoded)
+
+            if DEVICE.startswith("cuda"):
+                del encoded
+                if 'outputs' in locals():
+                    del outputs
+                torch.cuda.empty_cache()
+
+        return decoded_all
 
 
 def evaluate_detector_separation(real_scores: List[float], fake_scores: List[float], detector_name: str) -> Dict:
@@ -145,6 +167,7 @@ def main():
     parser.add_argument('--pct_words_masked', type=float, default=0.3)
     parser.add_argument('--span_length', type=int, default=2)
     parser.add_argument('--mask_top_p', type=float, default=1.0)
+    parser.add_argument('--chunk_size', type=int, default=32, help='Chunk size for perturbation batching')
     parser.add_argument('--int8', action='store_true')
     parser.add_argument('--half', action='store_true')
     parser.add_argument('--base_half', action='store_true')
@@ -189,11 +212,14 @@ def main():
     
     def truncate_text(text: str, max_tokens: int) -> str:
         """Truncate text to fit within token limit."""
-        tokens = tokenizer.encode(text)
-        if len(tokens) > max_tokens:
-            tokens = tokens[:max_tokens]
-            text = tokenizer.decode(tokens, skip_special_tokens=True)
-        return text
+        encoded = tokenizer(
+            text,
+            add_special_tokens=False,
+            truncation=True,
+            max_length=max_tokens,
+            return_attention_mask=False,
+        )
+        return tokenizer.decode(encoded["input_ids"], skip_special_tokens=True)
     
     dataset = [truncate_text(x, max_tokens) for x in dataset]
     
