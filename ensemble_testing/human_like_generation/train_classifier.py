@@ -22,7 +22,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from baselines.utils.loadmodel import load_base_model_and_tokenizer
 from baselines.loss import get_ll
 from baselines.rank import get_rank
-from baselines.entropy import get_entropy
 from ensemble_classifier import EnsembleTrainer
 
 import torch
@@ -33,10 +32,9 @@ import random
 def extract_features(texts: List[str], 
                     args, 
                     model_config) -> tuple:
-    """Extract log likelihood, log rank, and entropy for texts."""
+    """Extract log likelihood and log rank for texts."""
     log_likelihoods = []
     log_ranks = []
-    entropies = []
     
     print("  Extracting features...")
     for idx, text in enumerate(texts):
@@ -46,18 +44,15 @@ def extract_features(texts: List[str],
         try:
             ll = get_ll(text, args, model_config)
             lr = get_rank(text, args, model_config, log=True)
-            ent = get_entropy(text, args, model_config)
             
             log_likelihoods.append(ll)
             log_ranks.append(lr)
-            entropies.append(ent)
         except Exception as e:
             print(f"    Error extracting features for text {idx}: {e}")
             log_likelihoods.append(np.nan)
             log_ranks.append(np.nan)
-            entropies.append(np.nan)
     
-    return log_likelihoods, log_ranks, entropies
+    return log_likelihoods, log_ranks
 
 
 def load_and_prepare_dataset(args, model_config) -> List[str]:
@@ -216,7 +211,7 @@ def main():
     print(f"\nLoading base model: {args.base_model_name}")
     model_config = {'cache_dir': args.cache_dir}
     model_config = load_base_model_and_tokenizer(args, model_config)
-    # Note: mask filling model not needed for ensemble training (only uses likelihood, rank, entropy)
+    # Note: mask filling model not needed for ensemble training (only uses likelihood and rank)
     
     # Load and prepare dataset
     dataset = load_and_prepare_dataset(args, model_config)
@@ -242,26 +237,25 @@ def main():
     print("=" * 80)
     
     print("\nExtracting features from human text...")
-    human_ll, human_lr, human_ent = extract_features(human_texts, args, model_config)
+    human_ll, human_lr = extract_features(human_texts, args, model_config)
     
     print("\nExtracting features from normal LLM text...")
-    normal_ll, normal_lr, normal_ent = extract_features(normal_generated, args, model_config)
+    normal_ll, normal_lr = extract_features(normal_generated, args, model_config)
     
     print("\nExtracting features from human-like LLM text...")
-    human_like_ll, human_like_lr, human_like_ent = extract_features(human_like_generated, args, model_config)
+    human_like_ll, human_like_lr = extract_features(human_like_generated, args, model_config)
     
     # Remove NaN values
-    def filter_valid(ll, lr, ent):
-        valid_idx = ~(np.isnan(ll) | np.isnan(lr) | np.isnan(ent))
+    def filter_valid(ll, lr):
+        valid_idx = ~(np.isnan(ll) | np.isnan(lr))
         return (
             np.array(ll)[valid_idx].tolist(),
             np.array(lr)[valid_idx].tolist(),
-            np.array(ent)[valid_idx].tolist()
         )
     
-    human_ll, human_lr, human_ent = filter_valid(human_ll, human_lr, human_ent)
-    normal_ll, normal_lr, normal_ent = filter_valid(normal_ll, normal_lr, normal_ent)
-    human_like_ll, human_like_lr, human_like_ent = filter_valid(human_like_ll, human_like_lr, human_like_ent)
+    human_ll, human_lr = filter_valid(human_ll, human_lr)
+    normal_ll, normal_lr = filter_valid(normal_ll, normal_lr)
+    human_like_ll, human_like_lr = filter_valid(human_like_ll, human_like_lr)
     
     print(f"  Human: {len(human_ll)} valid samples")
     print(f"  Normal LLM: {len(normal_ll)} valid samples")
@@ -270,7 +264,6 @@ def main():
     # Prepare training data: human (0) vs LLM-generated (1)
     train_ll = human_ll + normal_ll + human_like_ll
     train_lr = human_lr + normal_lr + human_like_lr
-    train_ent = human_ent + normal_ent + human_like_ent
     train_labels = [0] * len(human_ll) + [1] * (len(normal_ll) + len(human_like_ll))
     
     print(f"\nTraining data: {len(train_ll)} samples ({sum(train_labels)} LLM, {len(train_labels) - sum(train_labels)} human)")
@@ -283,7 +276,6 @@ def main():
     
     train_ll = [train_ll[i] for i in indices]
     train_lr = [train_lr[i] for i in indices]
-    train_ent = [train_ent[i] for i in indices]
     train_labels = [train_labels[i] for i in indices]
     
     # Train ensemble classifier
@@ -291,8 +283,9 @@ def main():
     print("TRAINING ENSEMBLE CLASSIFIER")
     print("=" * 80)
     trainer = EnsembleTrainer(learning_rate=args.learning_rate, epochs=args.epochs)
-    X_train, y_train = trainer.prepare_features(train_ll, train_lr, train_ent, train_labels, fit_normalization=True)
+    X_train, y_train = trainer.prepare_features(train_ll, train_lr, train_labels, fit_normalization=True)
     trainer.train(X_train, y_train)
+    print(f"Learned fusion function: {trainer.get_fusion_formula()}")
     
     # Save model
     print("\n" + "=" * 80)
@@ -314,7 +307,9 @@ def main():
         'n_llm_samples': len(normal_ll) + len(human_like_ll),
         'epochs': args.epochs,
         'learning_rate': args.learning_rate,
-        'architecture': '3-layer dense with ReLU and sigmoid'
+        'architecture': 'quadratic sigmoid fusion over [log_likelihood, log_rank]',
+        'feature_set': ['log_likelihood', 'log_rank'],
+        'fusion_formula': trainer.get_fusion_formula(),
     }
     
     metadata_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}_metadata.json")

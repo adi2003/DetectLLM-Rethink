@@ -392,23 +392,19 @@ def main():
 
             X_human_normal, _ = trainer.prepare_features(
                 human_features['log_likelihood'],
-                human_features['log_rank'],
-                human_features['entropy']
+                human_features['log_rank']
             )
             X_normal, _ = trainer.prepare_features(
                 normal_features['log_likelihood'],
-                normal_features['log_rank'],
-                normal_features['entropy']
+                normal_features['log_rank']
             )
             X_human_human_like, _ = trainer.prepare_features(
                 human_features['log_likelihood'],
-                human_features['log_rank'],
-                human_features['entropy']
+                human_features['log_rank']
             )
             X_human_like, _ = trainer.prepare_features(
                 human_like_features['log_likelihood'],
-                human_like_features['log_rank'],
-                human_like_features['entropy']
+                human_like_features['log_rank']
             )
 
             ensemble_scores_human_normal = trainer.predict(X_human_normal)

@@ -276,7 +276,6 @@ def main():
     # Combine normal and human-like as LLM-generated (both should be label 1)
     train_ll = human_ll + normal_ll + human_like_ll
     train_lr = human_lr + normal_lr + human_like_lr
-    train_ent = human_ent + normal_ent + human_like_ent
     train_labels = [0] * len(human_ll) + [1] * (len(normal_ll) + len(human_like_ll))
     
     print(f"\nTraining data: {len(train_ll)} samples ({sum(train_labels)} LLM, {len(train_labels) - sum(train_labels)} human)")
@@ -289,7 +288,6 @@ def main():
     
     train_ll = [train_ll[i] for i in indices]
     train_lr = [train_lr[i] for i in indices]
-    train_ent = [train_ent[i] for i in indices]
     train_labels = [train_labels[i] for i in indices]
     
     # Prepare test sets for individual evaluations
@@ -313,8 +311,9 @@ def main():
     print("TRAINING ENSEMBLE CLASSIFIER")
     print("=" * 80)
     trainer = EnsembleTrainer(learning_rate=args.learning_rate, epochs=args.epochs)
-    X_train, y_train = trainer.prepare_features(train_ll, train_lr, train_ent, train_labels)
+    X_train, y_train = trainer.prepare_features(train_ll, train_lr, train_labels, fit_normalization=True)
     trainer.train(X_train, y_train)
+    print(f"Learned fusion function: {trainer.get_fusion_formula()}")
     
     # Evaluate on all three test sets
     print("\n" + "=" * 80)
@@ -355,14 +354,14 @@ def main():
     
     # Test on normal LLM
     test_normal_labels_array = np.array(test_normal_labels, dtype=int)
-    X_test_normal, _ = trainer.prepare_features(test_normal_ll, test_normal_lr, test_normal_ent, test_normal_labels)
+    X_test_normal, _ = trainer.prepare_features(test_normal_ll, test_normal_lr, test_normal_labels)
     eval_normal = trainer.evaluate(X_test_normal, test_normal_labels_array)
     results['ensemble_vs_normal_llm'] = eval_normal['roc_auc']
     print(f"Ensemble vs Normal LLM:        AUROC = {eval_normal['roc_auc']:.4f}")
     
     # Test on human-like LLM
     test_human_like_labels_array = np.array(test_human_like_labels, dtype=int)
-    X_test_human_like, _ = trainer.prepare_features(test_human_like_ll, test_human_like_lr, test_human_like_ent, test_human_like_labels)
+    X_test_human_like, _ = trainer.prepare_features(test_human_like_ll, test_human_like_lr, test_human_like_labels)
     eval_human_like = trainer.evaluate(X_test_human_like, test_human_like_labels_array)
     results['ensemble_vs_human_like_llm'] = eval_human_like['roc_auc']
     print(f"Ensemble vs Human-like LLM:    AUROC = {eval_human_like['roc_auc']:.4f}")
@@ -370,9 +369,8 @@ def main():
     # Test on combined
     test_combined_ll = test_normal_ll + test_human_like_ll
     test_combined_lr = test_normal_lr + test_human_like_lr
-    test_combined_ent = test_normal_ent + test_human_like_ent
     test_combined_labels = np.array([1] * (len(test_normal_ll) + len(test_human_like_ll)), dtype=int)
-    X_test_combined, _ = trainer.prepare_features(test_combined_ll, test_combined_lr, test_combined_ent, test_combined_labels.tolist())
+    X_test_combined, _ = trainer.prepare_features(test_combined_ll, test_combined_lr, test_combined_labels.tolist())
     eval_combined = trainer.evaluate(X_test_combined, test_combined_labels)
     results['ensemble_vs_all_llm'] = eval_combined['roc_auc']
     print(f"Ensemble vs All LLM:           AUROC = {eval_combined['roc_auc']:.4f}")
@@ -401,7 +399,6 @@ def main():
     X_human_like_for_ensemble, _ = trainer.prepare_features(
         test_human_ll + test_human_like_ll,
         test_human_lr + test_human_like_lr,
-        test_human_ent + test_human_like_ent,
         test_human_like_for_ensemble.tolist()
     )
     eval_ensemble_human_like = trainer.evaluate(X_human_like_for_ensemble, test_human_like_for_ensemble)
