@@ -271,10 +271,10 @@ def main():
         'sampled': human_like_generated
     }
 
-    print(data_normal["original"][0])
-    print(data_normal["sampled"][0])
-    print(data_human_like["original"][0])
-    print(data_human_like["sampled"][0])
+    # print(data_normal["original"][0])
+    # print(data_normal["sampled"][0])
+    # print(data_human_like["original"][0])
+    # print(data_human_like["sampled"][0])
     # print("hello")
     # print(data_normal)
     # print(type(data_normal["original"]))
