@@ -83,26 +83,19 @@ echo "----------------------------------------"
 
 IFS=',' read -r -a DATASET_ARRAY <<< "$DATASETS"
 
-for DATASET in "${DATASET_ARRAY[@]}"; do
-  DATASET="$(echo "$DATASET" | xargs)"
-  if [ -z "$DATASET" ]; then
-    continue
-  fi
+echo ""
+echo "----------------------------------------"
+echo "Training combined datasets: $DATASETS"
+echo "----------------------------------------"
 
-  echo ""
-  echo "----------------------------------------"
-  echo "Training dataset: $DATASET"
-  echo "----------------------------------------"
-
-  $PYTHON_BIN ensemble_testing/human_like_generation/train_classifier.py \
-    --dataset "$DATASET" \
-    --base_model_name "$BASE_MODEL" \
-    --n_samples "$N_SAMPLES" \
-    --epochs "$EPOCHS" \
-    --learning_rate "$LEARNING_RATE" \
-    --model_dir "$MODEL_DIR" \
-    --cache_dir "$CACHE_DIR"
-done
+$PYTHON_BIN ensemble_testing/human_like_generation/train_classifier.py \
+  --dataset "$DATASETS" \
+  --base_model_name "$BASE_MODEL" \
+  --n_samples "$N_SAMPLES" \
+  --epochs "$EPOCHS" \
+  --learning_rate "$LEARNING_RATE" \
+  --model_dir "$MODEL_DIR" \
+  --cache_dir "$CACHE_DIR"
 
 echo ""
 echo "========================================"
@@ -111,14 +104,9 @@ echo "========================================"
 echo ""
 echo "Models saved in: $MODEL_DIR"
 echo "Model files:"
-for DATASET in "${DATASET_ARRAY[@]}"; do
-  DATASET="$(echo "$DATASET" | xargs)"
-  if [ -z "$DATASET" ]; then
-    continue
-  fi
-  echo "  - ensemble_${DATASET}_${BASE_MODEL}.pt"
-  echo "  - ensemble_${DATASET}_${BASE_MODEL}_stats.json"
-done
+DATASET_TAG="$(echo "$DATASETS" | tr ',' '_' | tr -d ' ')"
+echo "  - ensemble_${DATASET_TAG}_${BASE_MODEL}.pt"
+echo "  - ensemble_${DATASET_TAG}_${BASE_MODEL}_stats.json"
 echo ""
 echo "Use with run.sh:"
 echo "  ./run.sh <dataset> <model> <samples> <baselines> <output_dir> --model_path $MODEL_DIR"

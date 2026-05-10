@@ -55,15 +55,15 @@ def extract_features(texts: List[str],
     return log_likelihoods, log_ranks
 
 
-def load_and_prepare_dataset(args, model_config) -> List[str]:
-    """Load and prepare dataset."""
-    print(f"Loading dataset: {args.dataset}")
-    if args.dataset == 'xsum':
+def load_and_prepare_dataset(dataset_name: str, args, model_config) -> List[str]:
+    """Load and prepare a single dataset."""
+    print(f"Loading dataset: {dataset_name}")
+    if dataset_name == 'xsum':
         dataset = datasets.load_dataset('xsum', split='train', cache_dir=args.cache_dir)['document']
-    elif args.dataset == 'squad':
+    elif dataset_name == 'squad':
         dataset = datasets.load_dataset('squad', split='train', cache_dir=args.cache_dir)['context']
     else:
-        dataset = datasets.load_dataset(args.dataset, split='train', cache_dir=args.cache_dir)[args.dataset_key]
+        dataset = datasets.load_dataset(dataset_name, split='train', cache_dir=args.cache_dir)[args.dataset_key]
     
     # Filter and prepare
     dataset = list(dict.fromkeys(dataset))
@@ -87,7 +87,7 @@ def load_and_prepare_dataset(args, model_config) -> List[str]:
     dataset = [truncate_text(x, max_tokens) for x in dataset]
     
     # Keep only long examples
-    if args.dataset in ['writing', 'squad', 'xsum']:
+    if dataset_name in ['writing', 'squad', 'xsum']:
         long_data = [x for x in dataset if len(x.split()) > 250]
         if len(long_data) > 0:
             dataset = long_data
@@ -96,8 +96,19 @@ def load_and_prepare_dataset(args, model_config) -> List[str]:
     random.shuffle(dataset)
     dataset = dataset[:args.n_samples]
     
-    print(f"Using {len(dataset)} examples")
+    print(f"Using {len(dataset)} examples from {dataset_name}")
     return dataset
+
+
+def load_and_prepare_datasets(dataset_names: List[str], args, model_config) -> List[str]:
+    """Load, clean, and combine multiple datasets into one training pool."""
+    combined = []
+    for dataset_name in dataset_names:
+        combined.extend(load_and_prepare_dataset(dataset_name, args, model_config))
+    random.seed(0)
+    random.shuffle(combined)
+    print(f"Combined training pool size: {len(combined)} examples")
+    return combined
 
 
 def generate_texts_simple(texts: List[str], model_config, args, instruction: str = None) -> List[str]:
@@ -200,6 +211,11 @@ def main():
     parser.add_argument('--epochs', type=int, default=500)
     
     args = parser.parse_args()
+
+    dataset_names = [x.strip() for x in args.dataset.split(',') if x.strip()]
+    if not dataset_names:
+        raise ValueError("At least one dataset must be provided")
+    dataset_tag = "_".join(dataset_names)
     
     os.makedirs(args.model_dir, exist_ok=True)
     
@@ -213,58 +229,64 @@ def main():
     model_config = load_base_model_and_tokenizer(args, model_config)
     # Note: mask filling model not needed for ensemble training (only uses likelihood and rank)
     
-    # Load and prepare dataset
-    dataset = load_and_prepare_dataset(args, model_config)
-    
-    # Generate texts in all three modes
+    # Load and prepare all requested datasets into one combined pool
+    combined_human_ll: List[float] = []
+    combined_human_lr: List[float] = []
+    combined_normal_ll: List[float] = []
+    combined_normal_lr: List[float] = []
+    combined_human_like_ll: List[float] = []
+    combined_human_like_lr: List[float] = []
+
     print("\n" + "-" * 80)
-    print("Generating training data...")
+    print("Generating combined training data...")
     print("-" * 80)
-    
-    print("  Generating human text (using dataset as-is)...")
-    human_texts = dataset
-    
-    print("  Generating normal LLM text...")
-    normal_generated = generate_texts_simple(dataset, model_config, args, instruction=None)
-    
-    print("  Generating human-like LLM text...")
-    instruction = "Write the following in a natural, human-like tone as if written by a person. Avoid robotic language and make it sound conversational:"
-    human_like_generated = generate_texts_simple(dataset, model_config, args, instruction=instruction)
-    
-    # Extract features for all three types
-    print("\n" + "=" * 80)
-    print("EXTRACTING FEATURES")
-    print("=" * 80)
-    
-    print("\nExtracting features from human text...")
-    human_ll, human_lr = extract_features(human_texts, args, model_config)
-    
-    print("\nExtracting features from normal LLM text...")
-    normal_ll, normal_lr = extract_features(normal_generated, args, model_config)
-    
-    print("\nExtracting features from human-like LLM text...")
-    human_like_ll, human_like_lr = extract_features(human_like_generated, args, model_config)
-    
-    # Remove NaN values
-    def filter_valid(ll, lr):
-        valid_idx = ~(np.isnan(ll) | np.isnan(lr))
-        return (
-            np.array(ll)[valid_idx].tolist(),
-            np.array(lr)[valid_idx].tolist(),
-        )
-    
-    human_ll, human_lr = filter_valid(human_ll, human_lr)
-    normal_ll, normal_lr = filter_valid(normal_ll, normal_lr)
-    human_like_ll, human_like_lr = filter_valid(human_like_ll, human_like_lr)
-    
-    print(f"  Human: {len(human_ll)} valid samples")
-    print(f"  Normal LLM: {len(normal_ll)} valid samples")
-    print(f"  Human-like LLM: {len(human_like_ll)} valid samples")
+
+    for dataset_name in dataset_names:
+        dataset = load_and_prepare_dataset(dataset_name, args, model_config)
+        print(f"  Generating human text for {dataset_name} (using dataset as-is)...")
+        human_texts = dataset
+        print(f"  Generating normal LLM text for {dataset_name}...")
+        normal_generated = generate_texts_simple(dataset, model_config, args, instruction=None)
+        print(f"  Generating human-like LLM text for {dataset_name}...")
+        instruction = "Write the following in a natural, human-like tone as if written by a person. Avoid robotic language and make it sound conversational:"
+        human_like_generated = generate_texts_simple(dataset, model_config, args, instruction=instruction)
+
+        print(f"\nExtracting features for {dataset_name}...")
+        human_ll, human_lr = extract_features(human_texts, args, model_config)
+        normal_ll, normal_lr = extract_features(normal_generated, args, model_config)
+        human_like_ll, human_like_lr = extract_features(human_like_generated, args, model_config)
+
+        def filter_valid(ll, lr):
+            valid_idx = ~(np.isnan(ll) | np.isnan(lr))
+            return (
+                np.array(ll)[valid_idx].tolist(),
+                np.array(lr)[valid_idx].tolist(),
+            )
+
+        human_ll, human_lr = filter_valid(human_ll, human_lr)
+        normal_ll, normal_lr = filter_valid(normal_ll, normal_lr)
+        human_like_ll, human_like_lr = filter_valid(human_like_ll, human_like_lr)
+
+        print(f"  {dataset_name} human: {len(human_ll)} valid samples")
+        print(f"  {dataset_name} normal LLM: {len(normal_ll)} valid samples")
+        print(f"  {dataset_name} human-like LLM: {len(human_like_ll)} valid samples")
+
+        combined_human_ll.extend(human_ll)
+        combined_human_lr.extend(human_lr)
+        combined_normal_ll.extend(normal_ll)
+        combined_normal_lr.extend(normal_lr)
+        combined_human_like_ll.extend(human_like_ll)
+        combined_human_like_lr.extend(human_like_lr)
+
+    print("\nCombined feature counts:")
+    print(f"  Human: {len(combined_human_ll)} valid samples")
+    print(f"  Normal LLM: {len(combined_normal_ll)} valid samples")
+    print(f"  Human-like LLM: {len(combined_human_like_ll)} valid samples")
     
     # Prepare training data: human (0) vs LLM-generated (1)
-    train_ll = human_ll + normal_ll + human_like_ll
-    train_lr = human_lr + normal_lr + human_like_lr
-    train_labels = [0] * len(human_ll) + [1] * (len(normal_ll) + len(human_like_ll))
+    train_ll = combined_human_ll + combined_normal_ll + combined_human_like_ll
+    train_lr = combined_human_lr + combined_normal_lr + combined_human_like_lr
+    train_labels = [0] * len(combined_human_ll) + [1] * (len(combined_normal_ll) + len(combined_human_like_ll))
     
     print(f"\nTraining data: {len(train_ll)} samples ({sum(train_labels)} LLM, {len(train_labels) - sum(train_labels)} human)")
     
@@ -293,22 +315,21 @@ def main():
     print("=" * 80)
     
     base_model_clean = args.base_model_name.replace('/', '_')
-    model_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}.pt")
-    stats_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}_stats.json")
-    plot_path = os.path.join(args.model_dir, f"training_loss_{args.dataset}_{base_model_clean}.png")
+    model_path = os.path.join(args.model_dir, f"ensemble_{dataset_tag}_{base_model_clean}.pt")
+    stats_path = os.path.join(args.model_dir, f"ensemble_{dataset_tag}_{base_model_clean}_stats.json")
+    plot_path = os.path.join(args.model_dir, f"training_loss_{dataset_tag}_{base_model_clean}.png")
     
     trainer.save(model_path, stats_path)
     trainer.plot_training_stats(plot_path)
     
-    trainer.save(model_path, stats_path)
-    
     # Save training metadata
     metadata = {
         'dataset': args.dataset,
+        'datasets': dataset_names,
         'base_model': args.base_model_name,
         'n_training_samples': len(train_ll),
-        'n_human_samples': len(human_ll),
-        'n_llm_samples': len(normal_ll) + len(human_like_ll),
+        'n_human_samples': len(combined_human_ll),
+        'n_llm_samples': len(combined_normal_ll) + len(combined_human_like_ll),
         'epochs': args.epochs,
         'learning_rate': args.learning_rate,
         'architecture': 'quadratic sigmoid fusion over [log_likelihood, log_rank]',
@@ -316,7 +337,7 @@ def main():
         'fusion_formula': trainer.get_fusion_formula(),
     }
     
-    metadata_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}_metadata.json")
+    metadata_path = os.path.join(args.model_dir, f"ensemble_{dataset_tag}_{base_model_clean}_metadata.json")
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
     print(f"Metadata saved to {metadata_path}")
