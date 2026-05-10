@@ -31,9 +31,9 @@ class SigmoidEnsembleClassifier(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with sigmoid output for binary classification."""
         x = self.fc1(x)
-        x = self.sigmoid(x)
+        x = self.relu(x)
         x = self.fc2(x)
-        x = self.sigmoid(x)
+        x = self.relu(x)
         x = self.fc3(x)
         x = self.sigmoid(x)
         return x
