@@ -32,6 +32,7 @@ from baselines.loss import get_ll
 from baselines.rank import get_rank
 from baselines.entropy import get_entropy
 from ensemble_classifier import EnsembleTrainer
+from distribution_plots import save_feature_distribution_artifacts
 import torch
 import datasets
 
@@ -143,6 +144,62 @@ def evaluate_detector_separation(real_scores: List[float], fake_scores: List[flo
         'pr_auc': pr_auc,
         'n_samples': len(real_scores)
     }
+
+
+def extract_feature_distributions(texts: List[str], args, model_config, label: str) -> Dict[str, List[float]]:
+    print(f"Extracting feature distributions for {label}...")
+    log_likelihood = []
+    log_rank = []
+    entropy = []
+    lrr = []
+
+    for idx, text in enumerate(texts):
+        if idx % max(1, len(texts) // 10) == 0:
+            print(f"  {label}: {idx}/{len(texts)}")
+
+        try:
+            ll = get_ll(text, args, model_config)
+            lr = get_rank(text, args, model_config, log=True)
+            ent = get_entropy(text, args, model_config)
+            lrr_value = (-ll / lr) if abs(lr) > 1e-12 else np.nan
+        except Exception:
+            ll, lr, ent, lrr_value = np.nan, np.nan, np.nan, np.nan
+
+        log_likelihood.append(ll)
+        log_rank.append(lr)
+        entropy.append(ent)
+        lrr.append(lrr_value)
+
+    return {
+        'log_likelihood': log_likelihood,
+        'log_rank': log_rank,
+        'entropy': entropy,
+        'lrr': lrr,
+    }
+
+
+def filter_valid_feature_rows(features: Dict[str, List[float]], require_ensemble: bool = False) -> Dict[str, List[float]]:
+    required_keys = ['log_likelihood', 'log_rank', 'entropy']
+    if require_ensemble:
+        required_keys.append('ensemble')
+
+    arrays = {k: np.asarray(features.get(k, []), dtype=np.float64) for k in features.keys()}
+    if not arrays:
+        return features
+
+    base_length = len(next(iter(arrays.values())))
+    valid_mask = np.ones(base_length, dtype=bool)
+    for key in required_keys:
+        if key in arrays:
+            valid_mask &= np.isfinite(arrays[key])
+
+    filtered = {}
+    for key, arr in arrays.items():
+        if len(arr) == base_length:
+            filtered[key] = arr[valid_mask].tolist()
+        else:
+            filtered[key] = arr.tolist()
+    return filtered
 
 
 def main():
@@ -271,6 +328,12 @@ def main():
         'sampled': human_like_generated
     }
 
+    feature_distributions = {
+        'human': extract_feature_distributions(data_normal['original'], args, model_config, 'human'),
+        'normal': extract_feature_distributions(data_normal['sampled'], args, model_config, 'normal_llm'),
+        'human_like': extract_feature_distributions(data_human_like['sampled'], args, model_config, 'human_like_llm'),
+    }
+
     # print(data_normal["original"][0])
     # print(data_normal["sampled"][0])
     # print(data_human_like["original"][0])
@@ -306,6 +369,8 @@ def main():
     # Prepare ensemble detector if requested and model exists
     ensemble_scores_normal = None
     ensemble_scores_human_like = None
+    ensemble_scores_human_normal = None
+    ensemble_scores_human_human_like = None
     
     if 'ensemble' in baselines and args.model_path:
         print("\n" + "=" * 80)
@@ -319,93 +384,40 @@ def main():
             
             trainer.load(model_path, stats_path, device=args.DEVICE)
             
-            # Extract features and evaluate ensemble
-            print("\nExtracting features for ensemble evaluation...")
-            
-            # Human text features (shared reference set)
-            print("  Human text...")
-            human_ll = []
-            human_lr = []
-            human_ent = []
-            for text in data_normal['original']:
-                try:
-                    ll = get_ll(text, args, model_config)
-                    lr = get_rank(text, args, model_config, log=True)
-                    ent = get_entropy(text, args, model_config)
-                    human_ll.append(ll)
-                    human_lr.append(lr)
-                    human_ent.append(ent)
-                except:
-                    human_ll.append(np.nan)
-                    human_lr.append(np.nan)
-                    human_ent.append(np.nan)
+            # Use already-extracted features to evaluate ensemble
+            human_features = filter_valid_feature_rows(feature_distributions['human'])
+            normal_features = filter_valid_feature_rows(feature_distributions['normal'])
+            human_like_features = filter_valid_feature_rows(feature_distributions['human_like'])
 
-            # Normal generation
-            print("  Normal generation...")
-            normal_ll = []
-            normal_lr = []
-            normal_ent = []
-            for text in data_normal['sampled']:
-                try:
-                    ll = get_ll(text, args, model_config)
-                    lr = get_rank(text, args, model_config, log=True)
-                    ent = get_entropy(text, args, model_config)
-                    normal_ll.append(ll)
-                    normal_lr.append(lr)
-                    normal_ent.append(ent)
-                except:
-                    normal_ll.append(np.nan)
-                    normal_lr.append(np.nan)
-                    normal_ent.append(np.nan)
-            
-            # Human-like generation
-            print("  Human-like generation...")
-            human_like_ll = []
-            human_like_lr = []
-            human_like_ent = []
-            for text in data_human_like['sampled']:
-                try:
-                    ll = get_ll(text, args, model_config)
-                    lr = get_rank(text, args, model_config, log=True)
-                    ent = get_entropy(text, args, model_config)
-                    human_like_ll.append(ll)
-                    human_like_lr.append(lr)
-                    human_like_ent.append(ent)
-                except:
-                    human_like_ll.append(np.nan)
-                    human_like_lr.append(np.nan)
-                    human_like_ent.append(np.nan)
-            
-            # Remove invalid rows so feature arrays stay aligned
-            def filter_valid_features(h_ll, h_lr, h_ent, m_ll, m_lr, m_ent):
-                human_mask = ~(np.isnan(h_ll) | np.isnan(h_lr) | np.isnan(h_ent))
-                machine_mask = ~(np.isnan(m_ll) | np.isnan(m_lr) | np.isnan(m_ent))
-                return (
-                    np.array(h_ll)[human_mask].tolist(),
-                    np.array(h_lr)[human_mask].tolist(),
-                    np.array(h_ent)[human_mask].tolist(),
-                    np.array(m_ll)[machine_mask].tolist(),
-                    np.array(m_lr)[machine_mask].tolist(),
-                    np.array(m_ent)[machine_mask].tolist(),
-                )
-
-            human_ll_clean, human_lr_clean, human_ent_clean, normal_ll_clean, normal_lr_clean, normal_ent_clean = filter_valid_features(
-                human_ll, human_lr, human_ent, normal_ll, normal_lr, normal_ent
+            X_human_normal, _ = trainer.prepare_features(
+                human_features['log_likelihood'],
+                human_features['log_rank'],
+                human_features['entropy']
             )
-            _, _, _, human_like_ll_clean, human_like_lr_clean, human_like_ent_clean = filter_valid_features(
-                human_ll, human_lr, human_ent, human_like_ll, human_like_lr, human_like_ent
+            X_normal, _ = trainer.prepare_features(
+                normal_features['log_likelihood'],
+                normal_features['log_rank'],
+                normal_features['entropy']
             )
-
-            # Get predictions for human vs each LLM-generated set
-            X_human_normal, _ = trainer.prepare_features(human_ll_clean, human_lr_clean, human_ent_clean)
-            X_normal, _ = trainer.prepare_features(normal_ll_clean, normal_lr_clean, normal_ent_clean)
-            X_human_human_like, _ = trainer.prepare_features(human_ll_clean, human_lr_clean, human_ent_clean)
-            X_human_like, _ = trainer.prepare_features(human_like_ll_clean, human_like_lr_clean, human_like_ent_clean)
+            X_human_human_like, _ = trainer.prepare_features(
+                human_features['log_likelihood'],
+                human_features['log_rank'],
+                human_features['entropy']
+            )
+            X_human_like, _ = trainer.prepare_features(
+                human_like_features['log_likelihood'],
+                human_like_features['log_rank'],
+                human_like_features['entropy']
+            )
 
             ensemble_scores_human_normal = trainer.predict(X_human_normal)
             ensemble_scores_normal = trainer.predict(X_normal)
             ensemble_scores_human_human_like = trainer.predict(X_human_human_like)
             ensemble_scores_human_like = trainer.predict(X_human_like)
+
+            feature_distributions['human']['ensemble'] = ensemble_scores_human_normal.tolist()
+            feature_distributions['normal']['ensemble'] = ensemble_scores_normal.tolist()
+            feature_distributions['human_like']['ensemble'] = ensemble_scores_human_like.tolist()
             
             print("Ensemble model loaded and evaluated successfully!")
         except Exception as e:
@@ -414,6 +426,16 @@ def main():
     elif 'ensemble' in baselines and not args.model_path:
         print("\nWarning: 'ensemble' baseline requested but --model_path not provided. Skipping ensemble.")
         baselines.remove('ensemble')
+
+    plot_artifacts = save_feature_distribution_artifacts(
+        feature_distributions=feature_distributions,
+        output_dir=args.output_dir,
+        dataset=args.dataset,
+        base_model=args.base_model_name,
+    )
+    if plot_artifacts.get('figure_path'):
+        print(f"Saved distribution plots to: {plot_artifacts['figure_path']}")
+    print(f"Saved distribution values to: {plot_artifacts['values_path']}")
     
     # Run detectors on both
     print("\n" + "=" * 80)

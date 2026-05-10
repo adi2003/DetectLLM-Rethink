@@ -275,6 +275,17 @@ def main():
     
     print(f"\nTraining data: {len(train_ll)} samples ({sum(train_labels)} LLM, {len(train_labels) - sum(train_labels)} human)")
     
+    # Shuffle training data before training to avoid ordering bias
+    print("Shuffling training data...")
+    indices = np.arange(len(train_ll))
+    np.random.seed(42)
+    np.random.shuffle(indices)
+    
+    train_ll = [train_ll[i] for i in indices]
+    train_lr = [train_lr[i] for i in indices]
+    train_ent = [train_ent[i] for i in indices]
+    train_labels = [train_labels[i] for i in indices]
+    
     # Train ensemble classifier
     print("\n" + "=" * 80)
     print("TRAINING ENSEMBLE CLASSIFIER")
