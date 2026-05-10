@@ -64,7 +64,7 @@ else
 fi
 
 $PYTHON_BIN ensemble_testing/perturbation_npr_drop/run_perturbation_npr_drop.py \
-  --datasets xsum,squad,writing \
+  --datasets xsum,squad \
   --base_model_name "$BASE_MODEL" \
   --n_samples "$N_SAMPLES" \
   --output_dir "$OUTDIR" \
