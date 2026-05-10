@@ -290,7 +290,7 @@ def main():
     
     base_model_clean = args.base_model_name.replace('/', '_')
     model_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}.pt")
-    stats_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}_stats.pt")
+    stats_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}_stats.json")
     
     trainer.save(model_path, stats_path)
     

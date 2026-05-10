@@ -315,7 +315,7 @@ def main():
             trainer = EnsembleTrainer(device=args.DEVICE)
             base_model_clean = args.base_model_name.replace('/', '_')
             model_path = os.path.join(args.model_path, f"ensemble_{args.dataset}_{base_model_clean}.pt")
-            stats_path = os.path.join(args.model_path, f"ensemble_{args.dataset}_{base_model_clean}_stats.pt")
+            stats_path = os.path.join(args.model_path, f"ensemble_{args.dataset}_{base_model_clean}_stats.json")
             
             trainer.load(model_path, stats_path, device=args.DEVICE)
             

@@ -9,6 +9,7 @@ import torch.nn as nn
 from typing import Tuple, List, Dict
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 import os
+import json
 
 
 class SigmoidEnsembleClassifier(nn.Module):
@@ -48,7 +49,7 @@ class EnsembleTrainer:
         self.criterion = nn.BCELoss()
         self.epochs = epochs
         self.train_losses = []
-        self.normalization_stats = {}  # Store min/max for feature normalization
+        self.normalization_stats = []  # Store min/max for feature normalization in feature order
     
     def prepare_features(self, 
                         log_likelihoods: List[float], 
@@ -68,7 +69,7 @@ class EnsembleTrainer:
             if fit_normalization:
                 col_min = np.min(col)
                 col_max = np.max(col)
-                self.normalization_stats[i] = {'min': col_min, 'max': col_max}
+                self.normalization_stats.append({'min': float(col_min), 'max': float(col_max)})
             else:
                 col_min = self.normalization_stats[i]['min']
                 col_max = self.normalization_stats[i]['max']
@@ -129,9 +130,10 @@ class EnsembleTrainer:
         print(f"Model saved to {model_path}")
         
         if stats_path is None:
-            stats_path = model_path.replace('.pt', '_stats.pt')
+            stats_path = model_path.replace('.pt', '_stats.json')
         
-        torch.save(self.normalization_stats, stats_path)
+        with open(stats_path, 'w') as f:
+            json.dump(self.normalization_stats, f, indent=2)
         print(f"Normalization stats saved to {stats_path}")
     
     def load(self, model_path: str, stats_path: str = None, device: str = 'cuda') -> None:
@@ -142,7 +144,8 @@ class EnsembleTrainer:
         print(f"Model loaded from {model_path}")
         
         if stats_path is None:
-            stats_path = model_path.replace('.pt', '_stats.pt')
+            stats_path = model_path.replace('.pt', '_stats.json')
         
-        self.normalization_stats = torch.load(stats_path, map_location='cpu')
+        with open(stats_path, 'r') as f:
+            self.normalization_stats = json.load(f)
         print(f"Normalization stats loaded from {stats_path}")
