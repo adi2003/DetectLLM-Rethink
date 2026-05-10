@@ -19,7 +19,7 @@ import numpy as np
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from baselines.utils.loadmodel import load_base_model_and_tokenizer, load_mask_filling_model
+from baselines.utils.loadmodel import load_base_model_and_tokenizer
 from baselines.loss import get_ll
 from baselines.rank import get_rank
 from baselines.entropy import get_entropy
@@ -215,7 +215,7 @@ def main():
     print(f"\nLoading base model: {args.base_model_name}")
     model_config = {'cache_dir': args.cache_dir}
     model_config = load_base_model_and_tokenizer(args, model_config)
-    model_config = load_mask_filling_model(args, args.mask_filling_model_name, model_config)
+    # Note: mask filling model not needed for ensemble training (only uses likelihood, rank, entropy)
     
     # Load and prepare dataset
     dataset = load_and_prepare_dataset(args, model_config)
