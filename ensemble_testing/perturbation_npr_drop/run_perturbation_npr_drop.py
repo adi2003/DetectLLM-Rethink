@@ -109,6 +109,17 @@ def load_dataset_texts(dataset_name: str, args: argparse.Namespace, model_config
     data = [x.strip() for x in data]
     data = [" ".join(x.split()) for x in data]
 
+    # Filter by length first (before tokenization)
+    if dataset_name in ["writing", "squad", "xsum"]:
+        long_data = [x for x in data if len(x.split()) > 250]
+        if long_data:
+            data = long_data
+
+    # Shuffle and slice BEFORE truncation to avoid tokenizing the entire dataset
+    random.seed(0)
+    random.shuffle(data)
+    data = data[: args.n_samples]
+
     tokenizer = model_config["base_tokenizer"]
     # Truncate aggressively for perturbation: masked texts must fit in T5's 512 token limit
     # Use 400 tokens to leave room for mask tokens and safety margin
@@ -125,15 +136,7 @@ def load_dataset_texts(dataset_name: str, args: argparse.Namespace, model_config
         return tokenizer.decode(encoded["input_ids"], skip_special_tokens=True)
 
     data = [truncate_text(x) for x in data]
-
-    if dataset_name in ["writing", "squad", "xsum"]:
-        long_data = [x for x in data if len(x.split()) > 250]
-        if long_data:
-            data = long_data
-
-    random.seed(0)
-    random.shuffle(data)
-    return data[: args.n_samples]
+    return data
 
 
 def generate_texts(texts: Sequence[str], model_config: Dict, args: argparse.Namespace, instruction: str | None = None) -> List[str]:
