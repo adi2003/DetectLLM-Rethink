@@ -110,7 +110,7 @@ def perturb_texts_(texts, args,  model_config, ceil_pct=False):
 
 def perturb_texts(texts, args,  model_config,  ceil_pct=False):
     
-    chunk_size = args.chunk_size
+    chunk_size = getattr(args, "chunk_size", 32)
     if '11b' in args.mask_filling_model_name:
         chunk_size //= 2
 
