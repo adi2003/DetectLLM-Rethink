@@ -85,6 +85,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pct_words_masked", type=float, default=0.3)
     parser.add_argument("--span_length", type=int, default=2)
     parser.add_argument("--buffer_size", type=int, default=1)
+    parser.add_argument("--mask_top_p", type=float, default=1.0)
     parser.add_argument("--chunk_size", type=int, default=32)
     parser.add_argument("--dataset_key", type=str, default="document")
     return parser.parse_args()
