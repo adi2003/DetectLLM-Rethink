@@ -110,7 +110,9 @@ def load_dataset_texts(dataset_name: str, args: argparse.Namespace, model_config
     data = [" ".join(x.split()) for x in data]
 
     tokenizer = model_config["base_tokenizer"]
-    max_tokens = 950
+    # Truncate aggressively for perturbation: masked texts must fit in T5's 512 token limit
+    # Use 400 tokens to leave room for mask tokens and safety margin
+    max_tokens = 400
 
     def truncate_text(text: str) -> str:
         encoded = tokenizer(
