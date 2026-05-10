@@ -181,6 +181,8 @@ def main():
     parser.add_argument('--model_path', type=str, default=None, help="Path to saved ensemble model directory (for 'ensemble' baseline)")
     
     args = parser.parse_args()
+    baselines = [x.strip() for x in args.baselines.split(',') if x.strip()]
+    needs_mask_model = any(baseline in {'DetectGPT', 'NPR'} for baseline in baselines)
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
@@ -193,7 +195,8 @@ def main():
     print(f"\nLoading base model: {args.base_model_name}")
     model_config = {'cache_dir': args.cache_dir}
     model_config = load_base_model_and_tokenizer(args, model_config)
-    model_config = load_mask_filling_model(args, args.mask_filling_model_name, model_config)
+    if needs_mask_model:
+        model_config = load_mask_filling_model(args, args.mask_filling_model_name, model_config)
     
     # Load dataset
     print(f"Loading dataset: {args.dataset}")
