@@ -22,10 +22,10 @@ class SigmoidEnsembleClassifier(nn.Module):
     def __init__(self, input_dim: int = 3):
         super().__init__()
         # Dense layer with sigmoid output
-        self.fc1 = nn.Linear(input_dim, 16)
+        self.fc1 = nn.Linear(input_dim, 8)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(16, 8)
-        self.fc3 = nn.Linear(8, 1)
+        self.fc2 = nn.Linear(8, 4)
+        self.fc3 = nn.Linear(4, 1)
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
