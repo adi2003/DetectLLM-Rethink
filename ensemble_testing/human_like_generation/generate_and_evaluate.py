@@ -322,6 +322,24 @@ def main():
             # Extract features and evaluate ensemble
             print("\nExtracting features for ensemble evaluation...")
             
+            # Human text features (shared reference set)
+            print("  Human text...")
+            human_ll = []
+            human_lr = []
+            human_ent = []
+            for text in data_normal['original']:
+                try:
+                    ll = get_ll(text, args, model_config)
+                    lr = get_rank(text, args, model_config, log=True)
+                    ent = get_entropy(text, args, model_config)
+                    human_ll.append(ll)
+                    human_lr.append(lr)
+                    human_ent.append(ent)
+                except:
+                    human_ll.append(np.nan)
+                    human_lr.append(np.nan)
+                    human_ent.append(np.nan)
+
             # Normal generation
             print("  Normal generation...")
             normal_ll = []
@@ -358,11 +376,35 @@ def main():
                     human_like_lr.append(np.nan)
                     human_like_ent.append(np.nan)
             
-            # Get predictions
-            X_normal, _ = trainer.prepare_features(normal_ll, normal_lr, normal_ent)
-            X_human_like, _ = trainer.prepare_features(human_like_ll, human_like_lr, human_like_ent)
-            
+            # Remove invalid rows so feature arrays stay aligned
+            def filter_valid_features(h_ll, h_lr, h_ent, m_ll, m_lr, m_ent):
+                human_mask = ~(np.isnan(h_ll) | np.isnan(h_lr) | np.isnan(h_ent))
+                machine_mask = ~(np.isnan(m_ll) | np.isnan(m_lr) | np.isnan(m_ent))
+                return (
+                    np.array(h_ll)[human_mask].tolist(),
+                    np.array(h_lr)[human_mask].tolist(),
+                    np.array(h_ent)[human_mask].tolist(),
+                    np.array(m_ll)[machine_mask].tolist(),
+                    np.array(m_lr)[machine_mask].tolist(),
+                    np.array(m_ent)[machine_mask].tolist(),
+                )
+
+            human_ll_clean, human_lr_clean, human_ent_clean, normal_ll_clean, normal_lr_clean, normal_ent_clean = filter_valid_features(
+                human_ll, human_lr, human_ent, normal_ll, normal_lr, normal_ent
+            )
+            _, _, _, human_like_ll_clean, human_like_lr_clean, human_like_ent_clean = filter_valid_features(
+                human_ll, human_lr, human_ent, human_like_ll, human_like_lr, human_like_ent
+            )
+
+            # Get predictions for human vs each LLM-generated set
+            X_human_normal, _ = trainer.prepare_features(human_ll_clean, human_lr_clean, human_ent_clean)
+            X_normal, _ = trainer.prepare_features(normal_ll_clean, normal_lr_clean, normal_ent_clean)
+            X_human_human_like, _ = trainer.prepare_features(human_ll_clean, human_lr_clean, human_ent_clean)
+            X_human_like, _ = trainer.prepare_features(human_like_ll_clean, human_like_lr_clean, human_like_ent_clean)
+
+            ensemble_scores_human_normal = trainer.predict(X_human_normal)
             ensemble_scores_normal = trainer.predict(X_normal)
+            ensemble_scores_human_human_like = trainer.predict(X_human_human_like)
             ensemble_scores_human_like = trainer.predict(X_human_like)
             
             print("Ensemble model loaded and evaluated successfully!")
@@ -383,7 +425,7 @@ def main():
     
     # Add ensemble results if available
     if ensemble_scores_normal is not None:
-        fpr, tpr, ensemble_auc = get_roc_metrics([0] * len(data_normal['original']), ensemble_scores_normal)
+        fpr, tpr, ensemble_auc = get_roc_metrics(ensemble_scores_human_normal.tolist(), ensemble_scores_normal.tolist())
         results_normal.append({'name': 'ensemble_threshold', 'roc_auc': ensemble_auc})
     
     print("\n" + "=" * 80)
@@ -395,7 +437,7 @@ def main():
     
     # Add ensemble results if available
     if ensemble_scores_human_like is not None:
-        fpr, tpr, ensemble_auc = get_roc_metrics([0] * len(data_human_like['original']), ensemble_scores_human_like)
+        fpr, tpr, ensemble_auc = get_roc_metrics(ensemble_scores_human_human_like.tolist(), ensemble_scores_human_like.tolist())
         results_human_like.append({'name': 'ensemble_threshold', 'roc_auc': ensemble_auc})
     
     # Compare results
