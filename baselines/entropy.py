@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 # get average entropy of each token in the text
 def get_entropy(text, args, model_config):
-    assert args.openai_model is None, "get_entropy not implemented for OpenAI models"
+    assert getattr(args, "openai_model", None) is None, "get_entropy not implemented for OpenAI models"
 
     with torch.no_grad():
         tokenized = model_config['base_tokenizer'](text, return_tensors="pt").to(args.DEVICE) # input_ids + mask

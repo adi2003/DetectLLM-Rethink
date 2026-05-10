@@ -200,6 +200,7 @@ def main():
     parser.add_argument('--DEVICE', type=str, default='cuda')
     parser.add_argument('--cache_dir', type=str, default="")
     parser.add_argument('--model_dir', type=str, default="./ensemble_models")
+    parser.add_argument('--openai_model', type=str, default=None)
     parser.add_argument('--learning_rate', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=100)
     
