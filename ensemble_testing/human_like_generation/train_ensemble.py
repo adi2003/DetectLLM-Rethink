@@ -315,6 +315,14 @@ def main():
     trainer.train(X_train, y_train)
     print(f"Learned fusion function: {trainer.get_fusion_formula()}")
     
+    # Save training plot
+    print("\n" + "=" * 80)
+    print("SAVING TRAINING STATS")
+    print("=" * 80)
+    base_model_clean = args.base_model_name.replace('/', '_')
+    plot_path = os.path.join(args.output_dir, f"training_loss_{args.dataset}_{base_model_clean}.png")
+    trainer.plot_training_stats(plot_path)
+    
     # Evaluate on all three test sets
     print("\n" + "=" * 80)
     print("EVALUATING ENSEMBLE CLASSIFIER")

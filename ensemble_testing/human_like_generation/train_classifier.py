@@ -295,6 +295,10 @@ def main():
     base_model_clean = args.base_model_name.replace('/', '_')
     model_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}.pt")
     stats_path = os.path.join(args.model_dir, f"ensemble_{args.dataset}_{base_model_clean}_stats.json")
+    plot_path = os.path.join(args.model_dir, f"training_loss_{args.dataset}_{base_model_clean}.png")
+    
+    trainer.save(model_path, stats_path)
+    trainer.plot_training_stats(plot_path)
     
     trainer.save(model_path, stats_path)
     

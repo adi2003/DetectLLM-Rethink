@@ -10,6 +10,7 @@ from typing import Tuple, List, Dict
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 import os
 import json
+import matplotlib.pyplot as plt
 
 
 class SigmoidEnsembleClassifier(nn.Module):
@@ -176,3 +177,35 @@ class EnsembleTrainer:
             f"{w22:.6f}*logrank_norm^2"
             ")"
         )
+
+    def plot_training_stats(self, output_path: str) -> None:
+        """Plot training loss curve and save to file."""
+        if not self.train_losses:
+            print("No training losses to plot (model not trained yet)")
+            return
+
+        os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Plot loss
+        epochs_range = range(1, len(self.train_losses) + 1)
+        ax.plot(epochs_range, self.train_losses, 'b-', linewidth=2, label='Training Loss')
+        ax.set_xlabel('Epoch', fontsize=12)
+        ax.set_ylabel('Loss (BCE)', fontsize=12)
+        ax.set_title('Training Loss Over Epochs', fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=11)
+
+        # Add smoothed line (moving average)
+        if len(self.train_losses) > 10:
+            window_size = max(5, len(self.train_losses) // 20)
+            moving_avg = np.convolve(self.train_losses, np.ones(window_size)/window_size, mode='valid')
+            ma_epochs = range(window_size, len(self.train_losses) + 1)
+            ax.plot(ma_epochs, moving_avg, 'r--', linewidth=2, alpha=0.7, label=f'Moving Avg (window={window_size})')
+            ax.legend(fontsize=11)
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150)
+        plt.close()
+        print(f"Training stats plot saved to {output_path}")
