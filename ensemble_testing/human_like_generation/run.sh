@@ -1,9 +1,10 @@
 #!/bin/bash
 # Global runner for human-like text evaluation (works on Kaggle, local, etc.)
 # Usage:
-#   ./run.sh [DATASET|DATASET1,DATASET2,...] [BASE_MODEL] [N_SAMPLES] [BASELINES] [OUTDIR]
+#   ./run.sh [DATASET|DATASET1,DATASET2,...] [BASE_MODEL] [N_SAMPLES] [BASELINES] [OUTDIR] [--model_path MODEL_DIR]
 # Example:
 #   ./run.sh xsum gpt2-medium 50 "likelihood,logrank,LRR" human_like_results
+#   ./run.sh xsum gpt2-medium 50 "likelihood,logrank,LRR,ensemble" human_like_results --model_path ./ensemble_models
 
 set -e
 
@@ -18,6 +19,12 @@ BASE_MODEL="${2:-gpt2-medium}"
 N_SAMPLES="${3:-50}"
 BASELINES="${4:-likelihood,logrank,LRR}"
 OUTDIR="${5:-human_like_results}"
+MODEL_PATH=""
+
+# Parse optional --model_path argument
+if [ "$6" == "--model_path" ] && [ -n "$7" ]; then
+  MODEL_PATH="$7"
+fi
 
 echo "========================================"
 echo "Human-Like Text Detector Robustness Test"
@@ -29,6 +36,9 @@ echo "  Base Model:      $BASE_MODEL"
 echo "  N Samples:       $N_SAMPLES"
 echo "  Baselines:       $BASELINES"
 echo "  Output Dir:      $OUTDIR"
+if [ -n "$MODEL_PATH" ]; then
+  echo "  Model Path:      $MODEL_PATH"
+fi
 echo ""
 
 mkdir -p "$OUTDIR"
@@ -59,12 +69,18 @@ for DATASET in "${DATASET_ARRAY[@]}"; do
   echo "Running dataset: $DATASET"
   echo "----------------------------------------"
 
-  $PYTHON_BIN ensemble_testing/human_like_generation/generate_and_evaluate.py \
+  CMD="$PYTHON_BIN ensemble_testing/human_like_generation/generate_and_evaluate.py \
     --dataset "$DATASET" \
     --base_model_name "$BASE_MODEL" \
     --n_samples "$N_SAMPLES" \
     --baselines "$BASELINES" \
-    --output_dir "$DATASET_OUTDIR"
+    --output_dir "$DATASET_OUTDIR""
+
+  if [ -n "$MODEL_PATH" ]; then
+    CMD="$CMD --model_path "$MODEL_PATH""
+  fi
+
+  eval "$CMD"
 done
 
 echo ""
