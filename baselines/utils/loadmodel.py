@@ -30,7 +30,14 @@ def load_base_model_and_tokenizer(args, model_config):
     if "facebook/opt-" in name:
         print("Using non-fast tokenizer for OPT")
         optional_tok_kwargs['fast'] = False
-    if args.dataset in ['pubmed']:
+    # Support either `args.dataset` (singular) or `args.datasets` (comma-separated)
+    dataset_arg = getattr(args, 'dataset', None)
+    if dataset_arg is None:
+        datasets_arg = getattr(args, 'datasets', None)
+        if datasets_arg:
+            dataset_arg = datasets_arg.split(',')[0].strip()
+
+    if dataset_arg in ['pubmed']:
         optional_tok_kwargs['padding_side'] = 'left'
     if 'llama' in name:
         base_tokenizer = transformers.LlamaTokenizer.from_pretrained(name, **optional_tok_kwargs, cache_dir=model_config['cache_dir'])
@@ -54,7 +61,14 @@ def load_mask_filling_model(args, mask_filling_model_name, model_config):
     
     preproc_tokenizer = transformers.AutoTokenizer.from_pretrained('t5-small', model_max_length=512, cache_dir=model_config['cache_dir'])
     mask_tokenizer = transformers.AutoTokenizer.from_pretrained(mask_filling_model_name, model_max_length=n_positions, cache_dir=model_config['cache_dir'])
-    if args.dataset in ['english', 'german']:
+    # Support either `args.dataset` or `args.datasets`
+    dataset_arg = getattr(args, 'dataset', None)
+    if dataset_arg is None:
+        datasets_arg = getattr(args, 'datasets', None)
+        if datasets_arg:
+            dataset_arg = datasets_arg.split(',')[0].strip()
+
+    if dataset_arg in ['english', 'german']:
         preproc_tokenizer = mask_tokenizer
     
     model_config['preproc_tokenizer'] = preproc_tokenizer
