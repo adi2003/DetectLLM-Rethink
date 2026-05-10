@@ -205,7 +205,7 @@ def main():
     parser.add_argument('--cache_dir', type=str, default="")
     parser.add_argument('--output_dir', type=str, default="ensemble_results")
     parser.add_argument('--learning_rate', type=float, default=0.001)
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=500)
     
     args = parser.parse_args()
     

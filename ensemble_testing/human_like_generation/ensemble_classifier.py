@@ -49,7 +49,7 @@ class SigmoidEnsembleClassifier(nn.Module):
 class EnsembleTrainer:
     """Trains and evaluates the ll-rank fusion classifier."""
     
-    def __init__(self, learning_rate: float = 0.001, epochs: int = 100, device: str = 'cuda'):
+    def __init__(self, learning_rate: float = 0.001, epochs: int = 500, device: str = 'cuda'):
         self.device = device if torch.cuda.is_available() else 'cpu'
         self.model = SigmoidEnsembleClassifier().to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)

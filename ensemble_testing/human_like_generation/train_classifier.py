@@ -197,7 +197,7 @@ def main():
     parser.add_argument('--model_dir', type=str, default="./ensemble_models")
     parser.add_argument('--openai_model', type=str, default=None)
     parser.add_argument('--learning_rate', type=float, default=0.001)
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=500)
     
     args = parser.parse_args()
     
