@@ -53,7 +53,15 @@ def load_mask_filling_model(args, mask_filling_model_name, model_config):
     
     print(f'Loading mask filling model {mask_filling_model_name}...')
     mask_model = transformers.AutoModelForSeq2SeqLM.from_pretrained(mask_filling_model_name, cache_dir=model_config['cache_dir'])
-    mask_model.parallelize()
+    # Some models (large sharded models) expose `parallelize()`; others do not.
+    # Call `parallelize()` when available, otherwise move the model to the target device.
+    try:
+        if hasattr(mask_model, 'parallelize'):
+            mask_model.parallelize()
+        else:
+            mask_model.to(args.DEVICE)
+    except Exception as e:
+        print(f"Warning: could not parallelize or move mask model to device: {e}")
     try:
         n_positions = mask_model.config.n_positions
     except AttributeError:
