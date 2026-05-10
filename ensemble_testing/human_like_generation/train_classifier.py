@@ -315,8 +315,8 @@ def main():
     print("=" * 80)
     
     base_model_clean = args.base_model_name.replace('/', '_')
-    model_path = os.path.join(args.model_dir, f"ensemble_{dataset_tag}_{base_model_clean}.pt")
-    stats_path = os.path.join(args.model_dir, f"ensemble_{dataset_tag}_{base_model_clean}_stats.json")
+    model_path = os.path.join(args.model_dir, "saved_model.pt")
+    stats_path = os.path.join(args.model_dir, "saved_model_stats.json")
     plot_path = os.path.join(args.model_dir, f"training_loss_{dataset_tag}_{base_model_clean}.png")
     
     trainer.save(model_path, stats_path)
