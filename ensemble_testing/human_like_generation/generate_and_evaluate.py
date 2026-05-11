@@ -54,8 +54,7 @@ class HumanLikeTextGenerator:
         """Generate with instruction to sound human-like."""
         instruction = "Write the following in a natural, human-like tone as if written by a person. Avoid robotic language and make it sound conversational:"
         new_instruction = "Rewrite the following to sound like it was written naturally by an intelligent person in casual real-world communication. Vary sentence length and structure, avoid overly polished or generic phrasing, remove robotic transitions, and keep the tone authentic, fluid, and slightly imperfect where appropriate:"
-        new_new_instruction = "You gonna pull this para longer nd wrote it like a nigga does. we dont make sense lets rock: "
-        return self._generate(texts, instruction=new_new_instruction)
+        return self._generate(texts, instruction=new_instruction)
     
     def _generate(self, texts: List[str], instruction: str = None) -> List[str]:
         """Generate text from prompts, optionally with instruction."""
